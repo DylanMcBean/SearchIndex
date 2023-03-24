@@ -7,6 +7,13 @@ import time
 from datetime import datetime
 import identifiers
 
+# Handle OS specific imports
+if os.name == "posix":
+    import pwd
+elif os.name == "nt":
+    import win32security
+    import pywintypes
+
 
 def create_database(db_filename):
     conn = sqlite3.connect(db_filename)
@@ -156,15 +163,19 @@ def get_directory_structure(conn, rootdir, filesystems=None, parent_id=None):
 
                 # Get file owner (works on Linux and Windows)
                 if os.name == 'posix':  # Linux
-                    import pwd
-                    file_owner = pwd.getpwuid(file_stat.st_uid).pw_name
+                    try:
+                        file_owner = pwd.getpwuid(file_stat.st_uid).pw_name
+                    except OSError:  # may happen if file is being used
+                        file_owner = "Unknown"
                 elif os.name == 'nt':  # Windows
-                    import win32security
-                    sd = win32security.GetFileSecurity(
-                        str(item_path), win32security.OWNER_SECURITY_INFORMATION)
-                    owner_sid = sd.GetSecurityDescriptorOwner()
-                    file_owner = win32security.LookupAccountSid(None, owner_sid)[
-                        0]
+                    try:
+                        sd = win32security.GetFileSecurity(
+                            str(item_path), win32security.OWNER_SECURITY_INFORMATION)
+                        owner_sid = sd.GetSecurityDescriptorOwner()
+                        file_owner = win32security.LookupAccountSid(None, owner_sid)[
+                            0]
+                    except pywintypes.error:  # catch the specific pywintypes.error exception
+                        file_owner = "Unknown"
 
                 insert_tag(conn, file_id, file_size, file_format,
                            file_created, file_accessed, file_modified, file_owner, file_indent)
